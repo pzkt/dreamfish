@@ -1,0 +1,3 @@
+% the inline child operator `>`: each step is that element's single child
+<nav > <ul > <li > <a href="/home"> Home
+<nav > <ul > <li > <a href="/about"> About

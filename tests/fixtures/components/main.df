@@ -1,0 +1,10 @@
+%local components with props, several sections in one file
+<:Card title="First" text="short"
+<:Card title="Second" text="longer text"
+<:Footer
+#Card
+<div class="card"
+ <h > {title}
+ <p > {text}
+#Footer
+<footer > <p > made with dreamfish

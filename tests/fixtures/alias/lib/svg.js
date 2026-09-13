@@ -1,0 +1,1 @@
+function logo(){ return "svg"; }

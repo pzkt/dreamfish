@@ -1,0 +1,16 @@
+% local component invoked twice; in-file assets are auto-included (rule 1)
+% and deduplicated even though `#Widget` is expanded twice
+<:Widget
+<:Widget
+% external raw files (rule 2)
+<:./vendor/site.css
+<:./vendor/main.js
+% a named asset section from another .df file (rule 2)
+<:./lib/tools.df#extra.js
+#Widget
+<div class="widget"
+ a widget
+#base.css
+.widget { color: red; }
+#beep.js
+console.log("beep");

@@ -1,0 +1,6 @@
+%-loop over a loaded KDL file, whole thing as one inline chain
+<ul > <:for item in {./items.kdl} > <li > {item.name}: {item.score}
+% full form: one inline chain + indented siblings for the innermost element
+<:for item in {./items.kdl} > <div class="row" > <a href="/{item.name}"
+ <h > {item.name}
+ <p > {item.score}

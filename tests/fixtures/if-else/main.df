@@ -1,0 +1,11 @@
+%test both branches of `<:if>` by invoking the same component twice
+<:Card highlighted=True
+<:Card highlighted=False
+#Card
+<div class="card"
+ <:if highlighted
+  <span class="badge"
+   highlighted
+ <:else
+  <span class="plain"
+   plain

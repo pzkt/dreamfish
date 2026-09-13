@@ -1,0 +1,8 @@
+% a library file: only sections, no main template, so never emitted as a page
+#Thing
+<span class="shared"
+ loaded from lib
+#factor.css
+.shared { font-weight: bold; }
+#announce.js
+function announce(){ return 1; }

@@ -1,0 +1,3 @@
+<h > Blog post
+% data file is resolved relative to this file's own directory
+<:for p in {./posts.kdl} > <p > {p.title}

@@ -1,0 +1,10 @@
+% local aliases: to a component, to a component in another file, to a raw JS asset
+<:{drink} text="espresso"
+<:shout
+<:{icon}
+#drink > Coffee
+#shout > ./lib/shout.df#Shouter
+#icon > ./lib/svg.js
+#Coffee
+<div class="coffee"
+ {text}

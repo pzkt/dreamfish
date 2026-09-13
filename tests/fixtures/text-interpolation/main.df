@@ -1,0 +1,5 @@
+%-prop interpolation in an attribute and inside text
+<:Greeting name="Ada" flavor="friendly"
+#Greeting
+<div class="greet" data-user="{name}"
+ Hello, {name}! {flavor} as always.

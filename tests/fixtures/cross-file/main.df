@@ -1,0 +1,3 @@
+% importing a component from a library file; its CSS/JS assets follow it
+<:./lib/shared.df#Thing
+<:./lib/shared.df#Thing
