@@ -179,12 +179,12 @@ fn assert_page(site: &Build, rel: &str, needle: &str) {
 
 #[test]
 fn pages_map_to_routes() {
-    // main.df -> index.html, contact.df -> contact.html,
+    // index.df -> index.html, contact.df -> contact.html,
     // texts/blog.df -> texts/blog.html (data file resolved relative to texts/).
     let site = build_fixture("pages");
     assert_page(&site, "index.html", "Home page");
     assert_page(&site, "contact.html", "Contact us");
     assert_page(&site, "texts/blog.html", "First post");
-    assert!(site.log.contains("built 3 page(s)"), "log:\n{}", site.log);
+    assert!(site.log.contains("Complete: built 3 pages from 3 files"), "log:\n{}", site.log);
     assert!(!site.log.contains("error"), "log:\n{}", site.log);
 }

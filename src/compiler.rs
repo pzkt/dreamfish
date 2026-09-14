@@ -605,9 +605,6 @@ pub fn target_label(t: &Target) -> String {
 }
 
 pub fn page_route(key: &str) -> String {
-    if key == "main.df" {
-        return "index.html".to_string();
-    }
     if let Some(stripped) = key.strip_suffix(".df") {
         format!("{stripped}.html")
     } else {

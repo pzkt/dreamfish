@@ -4,6 +4,10 @@ pub fn green(s: &str) -> String {
     paint(s, "\x1b[32m", true)
 }
 
+pub fn gray(s: &str) -> String {
+    paint(s, "\x1b[90m", true)
+}
+
 pub fn red(s: &str) -> String {
     paint(s, "\x1b[31m", false)
 }

@@ -7,7 +7,7 @@ fn recursion_guard() {
     expect_build_error(
         "recursive",
         &[(
-            "main.df",
+            "index.df",
             "<:A\n\
              #A\n\
              <div > <:B\n\
@@ -23,7 +23,7 @@ fn prop_section_name_collision() {
     expect_build_error(
         "collision",
         &[(
-            "main.df",
+            "index.df",
             "<:Widget\n\
              #Widget\n\
              <div > {item}\n\
@@ -39,7 +39,7 @@ fn duplicate_section_name() {
     expect_build_error(
         "duplicate",
         &[(
-            "main.df",
+            "index.df",
             "#A\n\
              <div > a\n\
              #A\n\
@@ -53,7 +53,7 @@ fn duplicate_section_name() {
 fn missing_referenced_df_file() {
     expect_build_error(
         "missing-file",
-        &[("main.df", "<:./missing.df#Thing\n")],
+        &[("index.df", "<:./missing.df#Thing\n")],
         "does not exist",
     );
 }
@@ -62,7 +62,7 @@ fn missing_referenced_df_file() {
 fn else_without_if() {
     expect_build_error(
         "else-without-if",
-        &[("main.df", "<:else\n")],
+        &[("index.df", "<:else\n")],
         "`<:else` without a matching `<:if`",
     );
 }
@@ -71,7 +71,7 @@ fn else_without_if() {
 fn inconsistent_indentation() {
     expect_build_error(
         "bad-indent",
-        &[("main.df", "<div\n   <p > two spaces\n  <span > one space\n")],
+        &[("index.df", "<div\n   <p > two spaces\n  <span > one space\n")],
         "inconsistent indentation",
     );
 }
@@ -80,7 +80,7 @@ fn inconsistent_indentation() {
 fn text_node_cannot_contain_children() {
     expect_build_error(
         "text-with-children",
-        &[("main.df", "hello\n <b > bold\n")],
+        &[("index.df", "hello\n <b > bold\n")],
         "text node cannot contain child elements",
     );
 }
@@ -91,7 +91,7 @@ fn unresolved_reference() {
         "unresolved",
         &[
             (
-                "main.df",
+                "index.df",
                 "<:Widget\n\
                  #Widget\n\
                  <div > {missing}\n",

@@ -25,6 +25,7 @@ pub fn run(args: BuildArgs) -> Result<(), String> {
     if !input.is_dir() {
         return Err(format!("input directory `{}` does not exist", input.display()));
     }
+    clean_output(&output, &input)?;
 
     let mut files = BTreeMap::new();
     let mut pages: Vec<String> = Vec::new();
@@ -56,7 +57,7 @@ pub fn run(args: BuildArgs) -> Result<(), String> {
                 }
                 fs::write(&dest, html)
                     .map_err(|e| format!("cannot write `{}`: {e}", dest.display()))?;
-                println!("built `{key}` -> `{}`", dest.display());
+                println!("{}", crate::term::gray(&format!("building `{key}` -> `{}`", dest.display())));
                 built += 1;
             }
             Err(e) => return Err(format!("{key}: {e}")),
@@ -64,12 +65,62 @@ pub fn run(args: BuildArgs) -> Result<(), String> {
     }
 
     println!(
-        "built {built} page(s) from {} file(s) into `{}`",
-        compiler.files.len(),
-        output.display()
+        "{}",
+        &format!(
+            "{}: built {built} page{} from {} file{} into `{}`",
+            crate::term::green("Complete"),
+            if built > 1 { "s" } else { "" },
+            compiler.files.len(),
+            if compiler.files.len() > 1 { "s" } else { "" },
+            output.display()
+        )
     );
-    println!("{}", crate::term::green("Complete"));
     Ok(())
+}
+
+fn clean_output(output: &Path, input: &Path) -> Result<(), String> {
+    let input = abs_norm(input);
+    let output = abs_norm(output);
+    if output == input {
+        return Err(format!(
+            "output directory `{}` must not be the input directory",
+            output.display()
+        ));
+    }
+    if input.starts_with(&output) {
+        return Err(format!(
+            "output directory `{}` would erase the input directory `{}`",
+            output.display(),
+            input.display()
+        ));
+    }
+    if output.exists() {
+        fs::remove_dir_all(&output)
+            .map_err(|e| format!("cannot clean output `{}`: {e}", output.display()))?;
+    }
+    fs::create_dir_all(&output)
+        .map_err(|e| format!("cannot create `{}`: {e}", output.display()))
+}
+
+fn abs_norm(p: &Path) -> PathBuf {
+    let abs = if p.is_absolute() {
+        p.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map(|c| c.join(p))
+            .unwrap_or_else(|_| p.to_path_buf())
+    };
+    let mut norm = PathBuf::new();
+    for part in abs.components() {
+        match part {
+            std::path::Component::CurDir => {}
+            std::path::Component::ParentDir => {
+                norm.pop();
+            }
+            other => norm.push(other.as_os_str()),
+        }
+    }
+    norm
 }
 
 fn collect_files(
