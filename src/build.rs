@@ -8,7 +8,7 @@ use crate::ast::{Attr, Chunk, File, Node, Section};
 use crate::compiler::{page_route, Compiler, Render};
 use crate::parser;
 
-#[derive(Args)]
+#[derive(Args, Clone)]
 pub struct BuildArgs {
     /// Source directory containing templates
     #[arg(long, default_value = ".")]
@@ -102,7 +102,7 @@ fn clean_output(output: &Path, input: &Path) -> Result<(), String> {
         .map_err(|e| format!("cannot create `{}`: {e}", output.display()))
 }
 
-fn abs_norm(p: &Path) -> PathBuf {
+pub(crate) fn abs_norm(p: &Path) -> PathBuf {
     let abs = if p.is_absolute() {
         p.to_path_buf()
     } else {

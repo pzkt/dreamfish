@@ -21,7 +21,13 @@ fn copy_dir(from: &Path, to: &Path) {
 }
 
 fn tmpdir(tag: &str) -> PathBuf {
-    let dir = std::env::temp_dir().join(format!("dreamfish-tests/{tag}-{}", std::process::id()));
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let dir = std::env::temp_dir().join(format!(
+        "dreamfish-tests/{tag}-{}-{}",
+        std::process::id(),
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    ));
     let _ = fs::remove_dir_all(&dir);
     fs::create_dir_all(&dir).unwrap();
     dir
