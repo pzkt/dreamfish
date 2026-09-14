@@ -8,3 +8,4 @@ pub mod parser;
 pub mod serve;
 pub mod term;
 pub mod watch;
+pub mod ws;

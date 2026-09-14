@@ -8,6 +8,10 @@ pub fn gray(s: &str) -> String {
     paint(s, "\x1b[90m", true)
 }
 
+pub fn blue(s: &str) -> String {
+    paint(s, "\x1b[34m", true)
+}
+
 pub fn red(s: &str) -> String {
     paint(s, "\x1b[31m", false)
 }

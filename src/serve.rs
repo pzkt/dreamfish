@@ -3,7 +3,6 @@ use std::fs;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -12,6 +11,7 @@ use clap::Args;
 
 use crate::build::{self, BuildArgs};
 use crate::term;
+use crate::ws::{self, Frame, Hub};
 
 #[derive(Args)]
 pub struct ServeArgs {
@@ -35,26 +35,29 @@ pub fn run(args: ServeArgs) -> Result<(), String> {
     };
     build::run(build_args.clone())?;
 
-    let version = Arc::new(AtomicU64::new(1));
-    let watch_version = Arc::clone(&version);
+    let hub = Arc::new(Hub::new());
+    let watch_hub = Arc::clone(&hub);
     let output = args.output.clone();
-    thread::spawn(move || watch_loop(args.input, args.output, build_args, watch_version));
+    thread::spawn(move || watch_loop(args.input, args.output, build_args, watch_hub));
 
     let listener = TcpListener::bind(("127.0.0.1", args.port))
         .map_err(|e| format!("cannot listen on port {}: {e}", args.port))?;
-    println!("{}", term::green(&format!("http://localhost:{}", args.port)));
+
+    println!("\n===== live site =====");
+    println!("{}", term::blue(&format!("http://localhost:{}", args.port)));
     println!("{}", term::gray("Press Ctrl+C to stop"));
+    println!("=====================\n");
 
     for stream in listener.incoming() {
         let Ok(stream) = stream else { continue };
-        let version = Arc::clone(&version);
+        let hub = Arc::clone(&hub);
         let output = PathBuf::from(&output);
-        thread::spawn(move || handle(stream, version, output));
+        thread::spawn(move || handle(stream, hub, output));
     }
     Ok(())
 }
 
-fn watch_loop(input: String, output: String, build_args: BuildArgs, version: Arc<AtomicU64>) {
+fn watch_loop(input: String, output: String, build_args: BuildArgs, hub: Arc<Hub>) {
     let input = PathBuf::from(&input);
     let output = PathBuf::from(&output);
     let mut last = snapshot(&input, &output);
@@ -67,9 +70,7 @@ fn watch_loop(input: String, output: String, build_args: BuildArgs, version: Arc
         last = now;
         println!("\n{}", term::gray("Change detected, rebuilding..."));
         match build::run(build_args.clone()) {
-            Ok(()) => {
-                version.fetch_add(1, Ordering::Relaxed);
-            }
+            Ok(()) => hub.reload(),
             Err(e) => eprintln!("{}: {e}", term::red("rebuild failed")),
         }
     }
@@ -120,7 +121,7 @@ fn collect_snapshot(
     }
 }
 
-fn handle(mut stream: TcpStream, version: Arc<AtomicU64>, output: PathBuf) {
+fn handle(mut stream: TcpStream, hub: Arc<Hub>, output: PathBuf) {
     let mut buf = [0u8; 8192];
     let mut used = 0usize;
     loop {
@@ -152,15 +153,8 @@ fn handle(mut stream: TcpStream, version: Arc<AtomicU64>, output: PathBuf) {
         return;
     }
     let path = target.split(['?', '#']).next().unwrap_or("/");
-    if path == "/__dreamfish__reload" {
-        let body = format!("{{\"version\":{}}}", version.load(Ordering::Relaxed));
-        write_response(
-            &mut stream,
-            "HTTP/1.1 200 OK\r\n",
-            "application/json",
-            body.as_bytes(),
-            head_only,
-        );
+    if path == "/__dreamfish__ws" {
+        handle_ws(stream, &hub, &head);
         return;
     }
 
@@ -211,6 +205,57 @@ fn handle(mut stream: TcpStream, version: Arc<AtomicU64>, output: PathBuf) {
     }
 }
 
+fn handle_ws(mut stream: TcpStream, hub: &Arc<Hub>, head: &str) {
+    if !head.to_ascii_lowercase().contains("upgrade: websocket") {
+        write_response(
+            &mut stream,
+            "HTTP/1.1 400 Bad Request\r\n",
+            "text/plain; charset=utf-8",
+            b"400 Bad Request",
+            false,
+        );
+        return;
+    }
+    let Some(key) = ws::extract_key(head) else {
+        write_response(
+            &mut stream,
+            "HTTP/1.1 400 Bad Request\r\n",
+            "text/plain; charset=utf-8",
+            b"400 Bad Request",
+            false,
+        );
+        return;
+    };
+    let response = ws::handshake_response(&key);
+    if stream.write_all(&response).is_err() {
+        return;
+    }
+    let reader = match stream.try_clone() {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    let handle = match hub.connect(reader) {
+        Ok(h) => h,
+        Err(_) => return,
+    };
+    loop {
+        match ws::read_frame(&mut stream) {
+            Ok(Some(Frame::Ping(payload))) => {
+                if hub.send(&handle, &ws::pong_frame(&payload)).is_err() {
+                    break;
+                }
+            }
+            Ok(Some(Frame::Close(_))) => {
+                let _ = hub.send(&handle, &ws::close_frame(1000));
+                break;
+            }
+            Ok(_) => {}
+            Err(_) => break,
+        }
+    }
+    hub.remove(&handle);
+}
+
 fn write_response(stream: &mut TcpStream, status: &str, ctype: &str, body: &[u8], head_only: bool) {
     let mut out = Vec::new();
     out.extend_from_slice(status.as_bytes());
@@ -225,15 +270,18 @@ fn write_response(stream: &mut TcpStream, status: &str, ctype: &str, body: &[u8]
 
 const RELOAD_SCRIPT: &str = r#"<script>
 (function(){
-  var v = -1;
-  function poll(){
-    fetch('/__dreamfish__reload').then(function(r){return r.json()}).then(function(j){
-      if (v === -1) { v = j.version; return; }
-      if (j.version !== v) { v = j.version; location.reload(); }
-    }).catch(function(){});
+  var last = null;
+  var ws = null;
+  function connect(){
+    ws = new WebSocket('ws://'+location.host+'/__dreamfish__ws');
+    ws.onmessage = function(e){
+      var j; try { j = JSON.parse(e.data); } catch (_) { return; }
+      if (j.type === 'hello') { if (last === null) last = j.version; return; }
+      if (j.type === 'reload' && j.version !== last) { last = j.version; location.reload(); }
+    };
+    ws.onclose = function(){ ws = null; setTimeout(connect, 1000); };
   }
-  poll();
-  setInterval(poll, 1000);
+  connect();
 })();
 </script>"#;
 
