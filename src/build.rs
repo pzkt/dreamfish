@@ -68,6 +68,7 @@ pub fn run(args: BuildArgs) -> Result<(), String> {
         compiler.files.len(),
         output.display()
     );
+    println!("{}", crate::term::green("Complete"));
     Ok(())
 }
 
@@ -213,12 +214,29 @@ fn ident_texts(expr: &str) -> Vec<String> {
         if e.starts_with("./") || e.starts_with("../") || e.starts_with('/') {
             continue;
         }
+        let e = strip_brackets(e);
         if let Some((first, _)) = e.split_once('.') {
             if let Some(first) = first.split_whitespace().next() {
                 out.push(first.to_string());
             }
         } else if let Some(first) = e.split_whitespace().next() {
             out.push(first.to_string());
+        }
+    }
+    out
+}
+
+/// Remove `[...]` index segments from an expression, so `item[2].name`
+/// shares the same scope root (`item`) as `item.name`.
+fn strip_brackets(s: &str) -> String {
+    let mut out = String::new();
+    let mut depth = 0usize;
+    for c in s.chars() {
+        match c {
+            '[' => depth += 1,
+            ']' => depth = depth.saturating_sub(1),
+            other if depth == 0 => out.push(other),
+            _ => {}
         }
     }
     out
@@ -285,6 +303,7 @@ pub fn ident_root(expr: &str, out: &mut HashSet<String>) {
     if expr.starts_with("./") || expr.starts_with("../") || expr.starts_with('/') {
         return;
     }
+    let expr = strip_brackets(expr);
     if let Some((first, _)) = expr.split_once('.') {
         if let Some(first) = first.split_whitespace().next() {
             out.insert(first.to_string());

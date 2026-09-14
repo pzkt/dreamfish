@@ -6,4 +6,5 @@ pub mod init;
 pub mod lexer;
 pub mod parser;
 pub mod serve;
+pub mod term;
 pub mod watch;

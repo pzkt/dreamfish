@@ -1,0 +1,8 @@
+server name="prod" {
+    host "example.com"
+    port 443
+}
+server name="staging" {
+    host "staging.example.com"
+    port 80
+}

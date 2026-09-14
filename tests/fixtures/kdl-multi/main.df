@@ -1,0 +1,9 @@
+% multiple top-level nodes become a list, `[n]` selects the n-th node
+<ul >
+ <:for s in {./servers.kdl}
+  <li > {s.name} = {s.host} on {s.port}
+<div > {./servers.kdl[1].host}
+<div > {./servers.kdl[0].port}
+
+% negative index counts from the end
+<div > {./servers.kdl[-1].host}

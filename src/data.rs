@@ -29,6 +29,47 @@ impl Value {
         }
     }
 
+    pub fn index_num(&self, n: i64) -> Option<Value> {
+        let list = match self {
+            Value::Rec(r) => {
+                if let Some(Value::Lst(l)) = r.get("_args") {
+                    l
+                } else {
+                    return None;
+                }
+            }
+            Value::Lst(l) => l,
+            _ => return None,
+        };
+        let idx = if n < 0 {
+            let abs = n.unsigned_abs() as usize;
+            if abs > list.len() {
+                return None;
+            }
+            list.len() - abs
+        } else {
+            n as usize
+        };
+        list.get(idx).cloned()
+    }
+
+    pub fn collapse_args(self) -> Self {
+        match self {
+            Value::Rec(mut r) => {
+                if let Some(Value::Lst(args)) = r.remove("_args") {
+                    match args.len() {
+                        1 => args.into_iter().next().unwrap(),
+                        n if n > 1 => Value::Lst(args),
+                        _ => Value::Rec(r),
+                    }
+                } else {
+                    Value::Rec(r)
+                }
+            }
+            other => other,
+        }
+    }
+
     pub fn to_text(&self) -> String {
         match self {
             Value::Str(s) => s.clone(),
@@ -80,12 +121,36 @@ pub fn parse_kdl(src: &str) -> Result<Value, String> {
     if pos != toks.len() {
         return Err(format!("unexpected trailing KDL tokens at position {pos}"));
     }
-    let vals = nodes.into_iter().map(node_to_value).collect::<Result<Vec<_>, _>>()?;
-    match vals.len() {
-        0 => Ok(Value::Lst(Vec::new())),
-        1 => Ok(vals.into_iter().next().unwrap()),
-        _ => Ok(Value::Lst(vals)),
+    if nodes.is_empty() {
+        return Ok(Value::Lst(Vec::new()));
     }
+    if nodes.len() == 1 {
+        let node = nodes.into_iter().next().unwrap();
+        if let Some(ref name) = node.name {
+            if !name.is_empty()
+                && name != "_"
+                && node.props.is_empty()
+                && node.children.is_empty()
+                && node.args.len() == 1
+            {
+                return Ok(Value::Rec(BTreeMap::from([(
+                    name.clone(),
+                    node.args.into_iter().next().unwrap(),
+                )])));
+            }
+        }
+        return node_to_value(node);
+    }
+    let mut rec = BTreeMap::new();
+    let mut contents = Vec::new();
+    for node in nodes {
+        let key = node.name.clone().unwrap_or_else(|| "_".to_string());
+        let content = node_to_value(node)?;
+        rec.insert(key, content.clone());
+        contents.push(content);
+    }
+    rec.insert("_args".into(), Value::Lst(contents));
+    Ok(Value::Rec(rec))
 }
 
 struct KNode {
@@ -96,39 +161,29 @@ struct KNode {
 }
 
 fn node_to_value(n: KNode) -> Result<Value, String> {
-    if let (Some(name), true, args) = (
-        &n.name,
-        n.props.is_empty() && n.children.is_empty(),
-        &n.args,
-    ) {
-        if args.len() == 1 && !name.is_empty() && name != "_" {
-            return Ok(Value::Rec(
-                BTreeMap::from([(name.clone(), args[0].clone())]),
-            ));
-        }
-    }
     let mut rec = BTreeMap::new();
     for (k, v) in n.props {
         rec.insert(k, v);
     }
-    if !n.args.is_empty() {
-        rec.insert("_args".into(), Value::Lst(n.args.clone()));
-    }
+    rec.insert("_args".into(), Value::Lst(n.args));
     if !n.children.is_empty() {
         let mut groups: BTreeMap<String, Vec<Value>> = BTreeMap::new();
         for child in n.children {
             let label = child
                 .name
                 .clone()
-                .unwrap_or_else(|| "_args".to_string())
-                .to_string();
+                .unwrap_or_else(|| "_args".to_string());
             groups
                 .entry(label)
                 .or_default()
                 .push(node_to_value(child)?);
         }
-        for (k, lst) in groups {
-            rec.insert(k, Value::Lst(lst));
+        for (k, mut lst) in groups {
+            if lst.len() == 1 {
+                rec.insert(k, lst.remove(0));
+            } else {
+                rec.insert(k, Value::Lst(lst));
+            }
         }
     }
     Ok(Value::Rec(rec))
@@ -230,10 +285,15 @@ fn klex(src: &str) -> Result<Vec<(KTok, usize)>, String> {
                     Err(_) => return Err(format!("invalid number literal `{num}`")),
                 }
             }
-            c if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' => {
+            c if c.is_ascii_alphanumeric()
+                || c == '_'
+                || c == '-'
+                || c == '.'
+                || c == '#' =>
+            {
                 let mut ident = String::new();
                 while let Some(&c) = chars.peek() {
-                    if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' {
+                    if c.is_ascii_alphanumeric() || c == '_' || c == '-' || c == '.' || c == '#' {
                         ident.push(c);
                         chars.next();
                     } else {
@@ -255,9 +315,9 @@ fn literal(tok: &KTok) -> Result<Value, String> {
         KTok::Str(s) => Value::Str(s.clone()),
         KTok::Num(n) => Value::Num(*n),
         KTok::Ident(s) => match s.as_str() {
-            "true" => Value::Bool(true),
-            "false" => Value::Bool(false),
-            "null" => Value::Null,
+            "#true" | "true" => Value::Bool(true),
+            "#false" | "false" => Value::Bool(false),
+            "#null" | "null" => Value::Null,
             other => Value::Str(other.to_string()),
         },
         _ => return Err("expected a literal value".into()),
@@ -284,9 +344,8 @@ fn parse_single_node(toks: &[(KTok, usize)], pos: usize) -> Result<(KNode, usize
 
     if p < toks.len() {
         if let KTok::Ident(s) = &toks[p].0 {
-            let next_is_lbrace = toks.get(p + 1).map(|t| t.0 == KTok::LBrace).unwrap_or(false);
             let next_is_eq = toks.get(p + 1).map(|t| t.0 == KTok::Eq).unwrap_or(false);
-            if !next_is_lbrace && !next_is_eq {
+            if !next_is_eq {
                 name = Some(s.clone());
                 p += 1;
             }
@@ -361,5 +420,56 @@ mod tests {
         println!("flags -> {:?}", v);
         let rows = "row name=\"peter\" score=9\nrow name=\"anna\" score=7.5\n";
         println!("rows -> {:?}", parse_kdl(rows).unwrap());
+    }
+
+    #[test]
+    fn multiple_top_level_nodes() {
+        let src = "server name=\"prod\" {\n    host \"example.com\"\n    port 443\n}\n\
+                   server name=\"staging\" {\n    host \"staging.example.com\"\n    port 80\n}\n";
+        match parse_kdl(src).unwrap() {
+            Value::Rec(rec) => {
+                // ordered contents are preserved for `[n]` and iteration
+                match rec.get("_args") {
+                    Some(Value::Lst(items)) => {
+                        assert_eq!(items.len(), 2, "one entry per top-level node");
+                        for item in items {
+                            assert!(matches!(item, Value::Rec(_)));
+                        }
+                    }
+                    other => panic!("expected `_args` with node contents, got {other:?}"),
+                }
+                // node names become addressable keys (last one wins on repeats)
+                let server = rec.get("server").unwrap().clone().collapse_args();
+                match server {
+                    Value::Rec(s) => {
+                        assert_eq!(
+                            s.get("host").cloned().unwrap().collapse_args(),
+                            Value::Str("staging.example.com".into())
+                        );
+                        assert_eq!(
+                            s.get("name").cloned().unwrap().collapse_args(),
+                            Value::Str("staging".into())
+                        );
+                    }
+                    other => panic!("expected server record, got {other:?}"),
+                }
+            }
+            other => panic!("expected a record keyed by node name, got {other:?}"),
+        }
+        // distinct names: each is reachable by its node name
+        let v = parse_kdl("alpha \"x\"\nbeta \"y\"\n").unwrap();
+        match &v {
+            Value::Rec(rec) => {
+                assert_eq!(
+                    rec.get("alpha").cloned().unwrap().collapse_args(),
+                    Value::Str("x".into())
+                );
+                assert_eq!(
+                    rec.get("beta").cloned().unwrap().collapse_args(),
+                    Value::Str("y".into())
+                );
+            }
+            other => panic!("expected a named record, got {other:?}"),
+        }
     }
 }

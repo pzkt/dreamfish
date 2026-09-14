@@ -1,0 +1,3 @@
+% two top-level nodes accessed by node name, no loop
+<div > {./data.kdl.test}
+<div > {./data.kdl["thing"]}

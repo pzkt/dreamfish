@@ -1,0 +1,4 @@
+name "dreamfish"
+tagline "an indentation-based static site generator"
+version 0.1
+languages "rust" "kdl" "dreamfish"

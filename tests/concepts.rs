@@ -59,6 +59,48 @@ fn for_loop_over_kdl_data() {
 }
 
 #[test]
+fn kdl_tree_traversal() {
+    // KDL nodes are traversable via dot notation; a node with a single
+    // argument collapses to that argument, multiple arguments become a list;
+    // `[n]` indexes the n-th argument (negative = from the end) and
+    // `["key"]`/`[key]` reads a property or child by key.
+    let site = build_fixture("kdl-tree");
+    assert_eq!(
+        site.body("index.html"),
+        "<div>^4.17.21</div><div>1.2.0</div><div>2</div>\
+         <ul><li>1.0.0</li><li>1.1.0</li><li>1.2.0</li><li>2</li></ul>\
+         <div>1.0.0</div><div>1.0.0</div><div>^4.17.21</div>\
+         <div>tsc</div><div>True</div><div>False</div>\
+         <div>stable</div><div>1.0.0</div>"
+    );
+}
+
+#[test]
+fn kdl_simple_node_name_access() {
+    // Two bare top-level nodes (`test 1`, `thing 2`) are addressed directly
+    // by their node name, without a loop or an index.
+    let site = build_fixture("kdl-simple");
+    assert_eq!(
+        site.body("index.html"),
+        "<div>1</div><div>2</div>"
+    );
+}
+
+#[test]
+fn kdl_multiple_top_level_nodes() {
+    // A KDL file may contain several root nodes: they become a list of node
+    // contents, so `<:for>` iterates them and `[n]`/`[-n]` index across files.
+    let site = build_fixture("kdl-multi");
+    assert_eq!(
+        site.body("index.html"),
+        "<ul>\
+         <li>prod = example.com on 443</li><li>staging = staging.example.com on 80</li>\
+         </ul>\
+         <div>staging.example.com</div><div>443</div><div>staging.example.com</div>"
+    );
+}
+
+#[test]
 fn local_components_with_props() {
     let site = build_fixture("components");
     assert_eq!(
@@ -106,6 +148,11 @@ fn aliases_to_component_file_and_raw_asset() {
     let body = site.body("index.html");
     assert!(body.contains("<div class=\"coffee\">espresso</div>"));
     assert!(body.contains("<strong>SHOUT</strong>"));
+    // alias to a KDL data file: traversed by node name, plus a loop over it
+    assert!(body.contains(
+        "<div class=\"site\">dreamfish — an indentation-based static site generator (v0.1)</div>\
+         <ul><li>rust</li><li>kdl</li><li>dreamfish</li></ul>"
+    ));
     assert!(site.script("index.html").contains("function logo(){ return \"svg\"; }"));
 }
 

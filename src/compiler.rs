@@ -83,6 +83,78 @@ fn is_file_ref(s: &str) -> bool {
     s.starts_with("./") || s.starts_with("../") || s.starts_with('/')
 }
 
+#[derive(Debug, Clone)]
+enum Seg {
+    Field(String),
+    Index(i64),
+}
+
+/// Split a non-file reference into its root identifier and traversal segments.
+/// `item.name` → ("item", [Field("name")]); `item[2].x` → ("item", [Index(2), Field("x")]).
+fn split_segments(expr: &str) -> (String, Vec<Seg>) {
+    let mut root_end = expr.len();
+    for (i, c) in expr.char_indices() {
+        if c == '.' || c == '[' {
+            root_end = i;
+            break;
+        }
+    }
+    (expr[..root_end].to_string(), parse_trailing(&expr[root_end..]))
+}
+
+/// Split a data-file reference into its file path (up to `.kdl`) and segments.
+/// `./data.kdl.foo[2]` → ("./data.kdl", [Field("foo"), Index(2)]).
+fn split_file_ref(expr: &str) -> Result<(String, Vec<Seg>), String> {
+    let kdl = ".kdl";
+    let pos = expr
+        .find(kdl)
+        .ok_or_else(|| format!("data file reference `{expr}` must reference a `.kdl` file"))?;
+    let end = pos + kdl.len();
+    Ok((expr[..end].to_string(), parse_trailing(&expr[end..])))
+}
+
+fn parse_trailing(s: &str) -> Vec<Seg> {
+    let mut segs = Vec::new();
+    let mut chars = s.chars().peekable();
+    while let Some(&c) = chars.peek() {
+        match c {
+            '.' => {
+                chars.next();
+                let mut name = String::new();
+                while let Some(&c2) = chars.peek() {
+                    if c2 == '.' || c2 == '[' {
+                        break;
+                    }
+                    name.push(c2);
+                    chars.next();
+                }
+                segs.push(Seg::Field(name));
+            }
+            '[' => {
+                chars.next();
+                let mut inner = String::new();
+                for c2 in chars.by_ref() {
+                    if c2 == ']' {
+                        break;
+                    }
+                    inner.push(c2);
+                }
+                let inner = inner.trim();
+                if let Ok(n) = inner.parse::<i64>() {
+                    segs.push(Seg::Index(n));
+                } else {
+                    let key = inner.trim_matches(['"', '\'']);
+                    segs.push(Seg::Field(key.to_string()));
+                }
+            }
+            _ => {
+                chars.next();
+            }
+        }
+    }
+    segs
+}
+
 impl<'c> Render<'c> {
     pub fn new(comp: &'c Compiler) -> Render<'c> {
         Render {
@@ -269,37 +341,43 @@ impl<'c> Render<'c> {
         if expr.is_empty() {
             return Err("empty reference expression".into());
         }
-        if is_file_ref(expr) {
-            return self.load_data(file_key, expr);
-        }
 
-        let parts: Vec<&str> = expr.split('.').collect();
-        let first = parts[0];
-
-        let base = match env.vars.get(first) {
-            Some(v) => v.clone(),
-            None => {
-                let file = self
-                    .comp
-                    .files
-                    .get(file_key)
-                    .ok_or_else(|| format!("unknown file `{file_key}`"))?;
-                match file.sections.get(first) {
-                    Some(section) => self.section_value(file, file_key, first, section)?,
-                    None => {
-                        return Err(format!("unresolved reference `{expr}`"));
+        let (base, segments) = if is_file_ref(expr) {
+            let (path, segs) = split_file_ref(expr)?;
+            (self.load_data(file_key, &path)?, segs)
+        } else {
+            let (root, segs) = split_segments(expr);
+            let base = match env.vars.get(&root) {
+                Some(v) => v.clone(),
+                None => {
+                    let file = self
+                        .comp
+                        .files
+                        .get(file_key)
+                        .ok_or_else(|| format!("unknown file `{file_key}`"))?;
+                    match file.sections.get(&root) {
+                        Some(section) => self.section_value(file, file_key, &root, section)?,
+                        None => {
+                            return Err(format!("unresolved reference `{expr}`"));
+                        }
                     }
                 }
-            }
+            };
+            (base, segs)
         };
 
         let mut value = base;
-        for field in &parts[1..] {
-            value = value
-                .get(field)
-                .ok_or_else(|| format!("reference `{expr}`: no field `{field}`"))?;
+        for seg in &segments {
+            value = match seg {
+                Seg::Field(name) => value
+                    .get(name)
+                    .ok_or_else(|| format!("reference `{expr}`: no field `{name}`"))?,
+                Seg::Index(n) => value
+                    .index_num(*n)
+                    .ok_or_else(|| format!("reference `{expr}`: index `{n}` out of bounds"))?,
+            };
         }
-        Ok(value)
+        Ok(value.collapse_args())
     }
 
 fn section_value(
@@ -312,6 +390,13 @@ fn section_value(
         match section {
             Section::Asset { text, .. } => Ok(Value::Str(text.clone())),
             Section::Alias(target) => {
+                if let Target::File { path, section: None } = target {
+                    if path.ends_with(".kdl") {
+                        // an alias to a data file binds the parsed KDL value,
+                        // so `{name.field}` traversal works
+                        return self.load_data(file_key, path);
+                    }
+                }
                 let mut tmp = String::new();
                 let env = Env::default();
                 self.expand_target_rec(file_key, target, &[], &env, &mut tmp)?;

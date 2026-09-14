@@ -2,9 +2,14 @@
 <:{drink} text="espresso"
 <:shout
 <:{icon}
+% alias to a KDL data file: `{data...}` traverses the parsed value
+<div class="site"
+ {data.name} — {data.tagline} (v{data.version})
+<ul > <:for lang in {data.languages} > <li > {lang}
 #drink > Coffee
 #shout > ./lib/shout.df#Shouter
 #icon > ./lib/svg.js
+#data > ./lib/information.kdl
 #Coffee
 <div class="coffee"
  {text}

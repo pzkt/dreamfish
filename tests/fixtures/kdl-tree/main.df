@@ -1,0 +1,16 @@
+%- named-child traversal: a single-arg node collapses to that argument
+<:for pkg in {./package.kdl}
+ <div > {pkg.dependencies.lodash}
+ <div > {pkg.versions[2]}
+ <div > {pkg.versions[-1]}
+ <ul > <:for v in {pkg.versions} > <li > {v}
+ <div > {pkg.version}
+ <div > {pkg["version"]}
+ <div > {pkg["dependencies"]["lodash"]}
+ <div > {pkg.scripts.build}
+ <div > {pkg.flags[0]}
+ <div > {pkg.flags[1]}
+
+%- data file + path traversal in one expression
+<div > {./package.kdl.tags[1]}
+<div > {./package.kdl.version}

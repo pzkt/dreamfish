@@ -33,7 +33,7 @@ fn main() {
     };
 
     if let Err(err) = result {
-        eprintln!("error: {err}");
+        eprintln!("{}: {err}", dreamfish::term::red("Error"));
         std::process::exit(1);
     }
 }
