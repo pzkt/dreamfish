@@ -1,10 +1,10 @@
 use clap::{Parser, Subcommand};
 
-use dreamfish::{build, init, serve, watch};
+use dreamfish::{build, serve};
 
 #[derive(Parser)]
 #[command(name = "dreamfish")]
-#[command(version, about = "A static-site generator with a Slim/Pug-inspired template language")]
+#[command(version, about = ">< o>  my mind is dreaming of fish\n       my body doesn't exist anymore")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -14,12 +14,8 @@ struct Cli {
 enum Commands {
     /// Compile templates and assets into static output
     Build(build::BuildArgs),
-    /// Rebuild the site when source files change
-    Watch(watch::WatchArgs),
     /// Serve the generated output over HTTP
-    Serve(serve::ServeArgs),
-    /// Scaffold a new project in the current directory
-    Init(init::InitArgs),
+    Serve(serve::ServeArgs)
 }
 
 fn main() {
@@ -27,9 +23,7 @@ fn main() {
 
     let result = match cli.command {
         Commands::Build(args) => build::run(args),
-        Commands::Watch(args) => watch::run(args),
-        Commands::Serve(args) => serve::run(args),
-        Commands::Init(args) => init::run(args),
+        Commands::Serve(args) => serve::run(args)
     };
 
     if let Err(err) = result {
